@@ -15,6 +15,7 @@ def FeedbackControl(X, Xd, Xdnext, Kp, Ki, dt):
 
 	return V
 
+
 def NextState(x, u, dt, max_wheel_speed, max_arm_speed):
 
 	for i in range(5):
@@ -43,6 +44,9 @@ def NextState(x, u, dt, max_wheel_speed, max_arm_speed):
 	Tsb = np.array([[np.cos(phi), -np.sin(phi), 0, _x], [np.sin(phi), np.cos(phi), 0, _y],[0,0,1,0.0963],[0,0,0,1]])
 	T = MatrixExp6(vb)
 	q = Tsb@T
+	print(q)
+	print(new_joint_angles)
+	print(new_wheel_angles)
 
 	return new_joint_angles, new_wheel_angles, q
 
@@ -96,5 +100,23 @@ R2 = np.array([[np.cos(theta), 0, np.sin(theta)],[0, 1, 0],[-np.sin(theta), 0, n
 Tces = RpToTrans(R@R2, np.array([0,0,0.13]))
 Tceg = RpToTrans(R@R2, np.array([-0.008, 0, 0.0004]))
 
-output = TrajectoryGeneration(Tsei, Tsci, Tscf, Tceg, Tces, 1)
-np.savetxt("output.csv", output, delimiter=",")
+traj = TrajectoryGeneration(Tsei, Tsci, Tscf, Tceg, Tces, 1)
+np.savetxt("output.csv", traj, delimiter=",")
+
+Blist = np.array([[0,0,1,0,0.033,0],
+				  [0,-1,0,-0.5076,0,0],
+				  [0,-1,0,-0.3526,0,0],
+				  [0,-1,0,-0.2176,0,0],
+				  [0,0,1,0,0,0]]).T
+M = np.array([])
+x = np.array([0,0,0,0,0,0,0,0,0,0,0,0,0])
+
+[thetalist,success] = IKinBody(Blist,M,T,thetalist0,eomg,ev)
+
+for state in traj:
+
+u = np.array([10,10,10,10])
+x =
+NextState()
+
+
