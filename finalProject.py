@@ -18,6 +18,9 @@ def FeedbackControl(X, Xd, Xdnext, Kp, Ki, dt):
 
 def NextState(x, u, dt, max_wheel_speed, max_arm_speed):
 
+	# A 12-vector representing the current configuration of the robot (3 variables for the chassis configuration, 5 variables for the arm configuration, and 4 variables for the wheel angles).
+	# A 9-vector of controls indicating the wheel speeds � {\displaystyle u} (4 variables) and the arm joint speeds  � ˙{\displaystyle {\dot {\theta }}} (5 variables).
+
 	for i in range(5):
 		if u[4+i]> max_arm_speed:
 			u[4+i] = max_arm_speed
@@ -38,17 +41,14 @@ def NextState(x, u, dt, max_wheel_speed, max_arm_speed):
 	r=0.0475
 
 	vb = r/4 * np.array([[-1/(l+w), 1/(l+w), 1/(l+w), -1/(l+w)], [1,1,1,1], [-1,1,-1,1]]) @ x[8:12].T
+	vb = np.array([0,0,vb[0], vb[1], vb[2],0])
 	phi = x[0]
 	_x = x[1]
 	_y = x[2]
 	Tsb = np.array([[np.cos(phi), -np.sin(phi), 0, _x], [np.sin(phi), np.cos(phi), 0, _y],[0,0,1,0.0963],[0,0,0,1]])
-	T = MatrixExp6(vb)
+	T = MatrixExp6(VecTose3(vb))
 	q = Tsb@T
-	print(q)
-	print(new_joint_angles)
-	print(new_wheel_angles)
-
-	return new_joint_angles, new_wheel_angles, q
+	return np.array([np.arccos(q[0][0]), q[0][3], q[1][3], *new_joint_angles, *new_wheel_angles,0])
 
 
 # Helper function to convert trajectory into proper output form
@@ -108,15 +108,20 @@ Blist = np.array([[0,0,1,0,0.033,0],
 				  [0,-1,0,-0.3526,0,0],
 				  [0,-1,0,-0.2176,0,0],
 				  [0,0,1,0,0,0]]).T
-M = np.array([])
+#M = np.array([])
 x = np.array([0,0,0,0,0,0,0,0,0,0,0,0,0])
 
-[thetalist,success] = IKinBody(Blist,M,T,thetalist0,eomg,ev)
+#[thetalist,success] = IKinBody(Blist,M,T,thetalist0,eomg,ev)
 
-for state in traj:
+#for state in traj:
 
-u = np.array([10,10,10,10])
-x =
-NextState()
+u = np.array([10,10,10,10,0,0,0,0,0])
+output = np.zeros((100, 13))
+for i in range(100):
+	x = NextState(x,u,0.01 ,5 , 5)
+	output[i] = x
+
+print(output)
+np.savetxt("nextstate.csv", output, delimiter=",")
 
 
