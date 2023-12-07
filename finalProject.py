@@ -37,15 +37,18 @@ def NextState(x, u, dt, max_wheel_speed, max_arm_speed):
 	w=0.3/2
 	r=0.0475
 
-	vb = r/4 * np.array([[-1/(l+w), 1/(l+w), 1/(l+w), -1/(l+w)], [1,1,1,1], [-1,1,-1,1]]) @ x[8:12].T
-	vb = np.array([0,0,vb[0], vb[1], vb[2],0])
+	vb = r/4 * np.array([[-1/(l+w), 1/(l+w), 1/(l+w), -1/(l+w)], [1,1,1,1], [-1,1,-1,1]]) @ u[0:4].T
+	vb = np.array([0,0,*vb,0])
 	phi = x[0]
 	_x = x[1]
 	_y = x[2]
 	Tsb = np.array([[np.cos(phi), -np.sin(phi), 0, _x], [np.sin(phi), np.cos(phi), 0, _y],[0,0,1,0.0963],[0,0,0,1]])
-	T = MatrixExp6(VecTose3(vb))
+	T = MatrixExp6(VecTose3(vb)*dt)
 	q = Tsb@T
-	return np.array([np.arccos(q[0][0]), q[0][3], q[1][3], *new_joint_angles, *new_wheel_angles])
+	[R, p] = TransToRp(q)
+	phi = so3ToVec(R)
+
+	return np.array([phi[2], q[0][3], q[1][3], *new_joint_angles, *new_wheel_angles])
 
 
 # Helper function to convert trajectory into proper output form
@@ -113,7 +116,7 @@ Kp = np.zeros((6,6))
 
 Kp = np.zeros((6,6))
 Ki = np.zeros((6,6))
-_Kp = 0.1
+_Kp = 1
 _Ki = 0.1
 
 for i in range(6):
@@ -140,15 +143,8 @@ for i in range(N):
 	Tsb = np.array([[np.cos(x[0]), -np.sin(x[0]), 0, x[1]], [np.sin(x[0]), np.cos(x[0]), 0, x[2]], [0,0,1,0.0963], [0,0,0,1]])
 	X = Tsb@Tb0@T0e
 
-	Xd = np.array([[0,0,1,0.5],[0,1,0,0],[-1,0,0,0.5],[0,0,0,1]])
-	Xdnext = np.array([[0,0,1,0.6],[0,1,0,0],[-1,0,0,0.3],[0,0,0,1]])
-
-	Kp = np.zeros((6,6))
-	Ki = np.zeros((6,6))
-
 	Xd = TransformationFromList(traj[i])
 	Xdnext = TransformationFromList(traj[i+1])
-
 
 	V = FeedbackControl(X, Xd, Xdnext,Kp, Ki, dt)
 
@@ -163,9 +159,7 @@ for i in range(N):
 
 	x_dot = Jt @ V
 
-	print(x_dot)
-	wheel_angle = x_dot[0:4] / r
-	x = NextState(np.hstack((x,wheel_angle)), x_dot, 0.01, 10, 10)
+	x = NextState(x, x_dot, 0.01, 10, 10)
 	x = np.append(x, traj[i][12])
 
 	if i%k == 0:
