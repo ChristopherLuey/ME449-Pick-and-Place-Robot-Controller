@@ -1,18 +1,15 @@
 from modern_robotics import *
 import numpy as np
 
+np.set_printoptions(suppress=True)
+np.set_printoptions(precision=3)
+
 
 def FeedbackControl(X, Xd, Xdnext, Kp, Ki, dt):
-	Adj_X_err = MatrixLog6(TransInv(X) @ Xd)
-	X_err_R = Adj_X_err[0:3][0:3]
-	X_err_p_so3 = Adj_X_err[3:6][0:3] @ RotInv(X_err_R)
-	X_err_p = so3ToVec(X_err_p_so3)
-	X_err = RpToTrans(X_err_R, X_err_p)
-
-
-	Vd = 1/dt * MatrixLog6(TransInv(Xd) @Xdnext)
-	V = Adjoint(TransInv(X))@Adjoint(Xd) @ Vd + Kp@X_err + Ki@X_err * dt
-
+	Vd = se3ToVec(1/dt * MatrixLog6(TransInv(Xd) @Xdnext))
+	adxinvxdvd = Adjoint(TransInv(X)@Xd) @ Vd
+	X_err = se3ToVec(MatrixLog6(TransInv(X) @ Xd))
+	V = adxinvxdvd + Kp@X_err + Ki@X_err * dt
 	return V
 
 
@@ -48,7 +45,7 @@ def NextState(x, u, dt, max_wheel_speed, max_arm_speed):
 	Tsb = np.array([[np.cos(phi), -np.sin(phi), 0, _x], [np.sin(phi), np.cos(phi), 0, _y],[0,0,1,0.0963],[0,0,0,1]])
 	T = MatrixExp6(VecTose3(vb))
 	q = Tsb@T
-	return np.array([np.arccos(q[0][0]), q[0][3], q[1][3], *new_joint_angles, *new_wheel_angles,0])
+	return np.array([np.arccos(q[0][0]), q[0][3], q[1][3], *new_joint_angles, *new_wheel_angles])
 
 
 # Helper function to convert trajectory into proper output form
@@ -59,6 +56,10 @@ def ConvertTrajectory(traj, output, n, gripper):
 		output[n] = new_arr
 		n+=1
 	return n
+
+
+def TransformationFromList(row):
+	return np.array([[row[0], row[1], row[2], row[9]], [row[3], row[4], row[5], row[10]],[row[6], row[7], row[8], row[11]],[0,0,0,1]])
 
 
 # TrajectoryGeneration for Milestone 2
@@ -86,7 +87,6 @@ def TrajectoryGeneration(Tsei, Tsci, Tscf, Tceg, Tces, k):
 	return output
 
 
-# Example of using trajectory generation
 Tsei = np.array([[0,0,1,0], [0,1,0,0], [-1,0,0,0.5], [0,0,0,1]])
 Tsci = np.array([[1,0,0,1], [0,1,0,0], [0,0,1,0.025], [0,0,0,1]])
 Tscf = np.array([[0,1,0,0], [-1,0,0,-1], [0,0,1,0.025], [0,0,0,1]])
@@ -100,28 +100,76 @@ R2 = np.array([[np.cos(theta), 0, np.sin(theta)],[0, 1, 0],[-np.sin(theta), 0, n
 Tces = RpToTrans(R@R2, np.array([0,0,0.13]))
 Tceg = RpToTrans(R@R2, np.array([-0.008, 0, 0.0004]))
 
-traj = TrajectoryGeneration(Tsei, Tsci, Tscf, Tceg, Tces, 1)
-np.savetxt("output.csv", traj, delimiter=",")
-
-Blist = np.array([[0,0,1,0,0.033,0],
-				  [0,-1,0,-0.5076,0,0],
-				  [0,-1,0,-0.3526,0,0],
-				  [0,-1,0,-0.2176,0,0],
-				  [0,0,1,0,0,0]]).T
-#M = np.array([])
-x = np.array([0,0,0,0,0,0,0,0,0,0,0,0,0])
-
-#[thetalist,success] = IKinBody(Blist,M,T,thetalist0,eomg,ev)
-
-#for state in traj:
-
-u = np.array([10,10,10,10,0,0,0,0,0])
-output = np.zeros((100, 13))
-for i in range(100):
-	x = NextState(x,u,0.01 ,5 , 5)
-	output[i] = x
-
-print(output)
-np.savetxt("nextstate.csv", output, delimiter=",")
 
 
+Blist = np.array([[0,0,1,0,0.033,0],[0,-1,0,-0.5076,0,0], [0,-1,0,-0.3526,0,0], [0,-1,0,-0.2176,0,0], [0,0,1,0,0,0]]).T
+Mlist = np.array([[1,0,0,0.033], [0,1,0,0], [0,0,1,0.6546], [0,0,0,1]])
+Tb0 = np.array([[1,0,0,0.1662], [0,1,0,0], [0,0,1,0.0026], [0,0,0,1]])
+
+x = np.array([0,0,0,0,0,0.2,-1.6,0,0,0,0,0,0])
+
+Kp = np.zeros((6,6))
+
+
+Kp = np.zeros((6,6))
+Ki = np.zeros((6,6))
+_Kp = 0.1
+_Ki = 0.1
+
+for i in range(6):
+	Kp[i][i] = _Kp
+	Ki[i][i] = _Ki
+
+l = 0.47 / 2
+w = 0.3 / 2
+r = 0.0475
+
+dt = 0.01
+k = 1
+
+traj = TrajectoryGeneration(Tsei, Tsci, Tscf, Tceg, Tces, k)
+np.savetxt("trajectory.csv", traj, delimiter=",")
+
+N = traj.shape[0]-1
+output = np.zeros((int(N/k),13))
+
+
+for i in range(N):
+
+	T0e = FKinBody(Mlist, Blist, x[3:8])
+	Tsb = np.array([[np.cos(x[0]), -np.sin(x[0]), 0, x[1]], [np.sin(x[0]), np.cos(x[0]), 0, x[2]], [0,0,1,0.0963], [0,0,0,1]])
+	X = Tsb@Tb0@T0e
+
+	Xd = np.array([[0,0,1,0.5],[0,1,0,0],[-1,0,0,0.5],[0,0,0,1]])
+	Xdnext = np.array([[0,0,1,0.6],[0,1,0,0],[-1,0,0,0.3],[0,0,0,1]])
+
+	Kp = np.zeros((6,6))
+	Ki = np.zeros((6,6))
+
+	Xd = TransformationFromList(traj[i])
+	Xdnext = TransformationFromList(traj[i+1])
+
+
+	V = FeedbackControl(X, Xd, Xdnext,Kp, Ki, dt)
+
+	F = r/4 * np.array([[-1/(l+w), 1/(l+w), 1/(l+w), -1/(l+w)], [1,1,1,1], [-1,1,-1,1]])
+	F6 = np.vstack((np.zeros(4,), np.zeros(4,), F, np.zeros(4,)))
+
+	Jbase = Adjoint(TransInv(T0e) @ TransInv(Tb0)) @ F6
+	Jarm = JacobianBody(Blist, x[3:8])
+
+	J = np.hstack((Jbase, Jarm))
+	Jt = J.T @ np.linalg.inv(J @ J.T)
+
+	x_dot = Jt @ V
+
+	print(x_dot)
+	wheel_angle = x_dot[0:4] / r
+	x = NextState(np.hstack((x,wheel_angle)), x_dot, 0.01, 10, 10)
+	x = np.append(x, traj[i][12])
+
+	if i%k == 0:
+		output[i] = x
+
+
+np.savetxt("out.csv", output, delimiter=",")
