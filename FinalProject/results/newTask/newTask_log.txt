@@ -1,0 +1,5 @@
+py newTask.py
+Running newTask configuration
+Generating EE trajectory
+Generating configuration output
+Done.

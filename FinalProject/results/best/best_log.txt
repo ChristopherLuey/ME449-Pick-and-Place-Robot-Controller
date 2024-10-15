@@ -1,0 +1,5 @@
+py best.py
+Running best configuration
+Generating EE trajectory
+Generating configuration output
+Done.
